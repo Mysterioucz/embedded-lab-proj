@@ -1,0 +1,31 @@
+{
+  "name": "iot-sensor-dashboard",
+  "version": "1.0.0",
+  "description": "IoT Sensor Dashboard with Next.js, Node.js, MQTT, and Socket.io",
+  "scripts": {
+    "install:all": "pnpm install && cd backend && pnpm install && cd ../frontend && pnpm install",
+    "dev:backend": "cd backend && pnpm run dev",
+    "dev:frontend": "cd frontend && pnpm run dev",
+    "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
+    "start:backend": "cd backend && pnpm run start",
+    "start:frontend": "cd frontend && pnpm run start",
+    "build:frontend": "cd frontend && pnpm run build",
+    "test:publisher": "cd backend && node test-publisher.js"
+  },
+  "keywords": [
+    "iot",
+    "mqtt",
+    "socket.io",
+    "nextjs",
+    "nodejs",
+    "mongodb",
+    "sensors",
+    "dashboard"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.18.1",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
