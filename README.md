@@ -2,7 +2,7 @@
 
 A real-time IoT sensor monitoring system built with **Next.js** (Frontend), **Node.js** (Backend), **MQTT** (Message Broker), **Socket.io** (Real-time Communication), and **MongoDB** (Database).
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────┐
@@ -42,7 +42,7 @@ A real-time IoT sensor monitoring system built with **Next.js** (Frontend), **No
    - Topic pattern: `home/sensors/[sensor-name]`
    - JSON payload format
 
-## 📋 Prerequisites
+## Prerequisites
 
 - **Node.js** >= 18.x
 - **pnpm** (recommended) or npm
@@ -50,7 +50,7 @@ A real-time IoT sensor monitoring system built with **Next.js** (Frontend), **No
   - Local: Install MongoDB Community Edition
   - Cloud: MongoDB Atlas (free tier available)
 
-## 🚀 Installation
+## Installation
 
 ### 1. Clone the Repository
 
@@ -396,7 +396,7 @@ pnpm run build    # Production build
 pnpm run start    # Production server
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### MongoDB Connection Error
 
@@ -433,7 +433,7 @@ pnpm run start    # Production server
 3. Use test publisher to send sample data
 4. Check MongoDB for stored data: `mongosh iot-sensors`
 
-## 📦 Deployment
+## Deployment
 
 ### Backend Deployment (Heroku/Railway/Render)
 
@@ -456,18 +456,16 @@ If you prefer using Mosquitto or HiveMQ instead of Aedes:
 2. Start broker: `mosquitto -p 1883`
 3. Update backend to connect as MQTT client instead of running broker
 
-## 📝 License
+## License
 
 MIT License - feel free to use this project for learning and development.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📧 Support
+## Support
 
 For issues and questions, please open an issue on GitHub.
 
 ---
-
-**Built with ❤️ using Next.js, Node.js, MQTT, and Socket.io**
