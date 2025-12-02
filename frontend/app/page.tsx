@@ -55,8 +55,6 @@ export default function Dashboard() {
                     <ChartsSection sensorData={sensorData} />
                 )}
             </div>
-
-            
         </main>
     );
 }
