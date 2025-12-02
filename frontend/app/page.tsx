@@ -45,7 +45,7 @@ export default function Dashboard() {
 
                 {/* Sensor Cards */}
                 {topics.size > 0 ? (
-                    <SensorGrid topics={topics} />
+                    <SensorGrid topics={topics} connected={connected} />
                 ) : (
                     <EmptyState />
                 )}

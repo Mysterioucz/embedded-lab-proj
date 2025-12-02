@@ -2,6 +2,7 @@
 
 import { Thermometer, Droplets, Gauge, Sun, Activity } from "lucide-react";
 import { format } from "date-fns";
+import { useTimeAgo } from "@/lib/hooks/useLiveStatus";
 
 interface SensorCardProps {
     title: string;
@@ -13,6 +14,7 @@ interface SensorCardProps {
     motion?: boolean;
     timestamp: string;
     sensorId?: string;
+    isLive?: boolean;
 }
 
 export default function SensorCard({
@@ -25,6 +27,7 @@ export default function SensorCard({
     motion,
     timestamp,
     sensorId,
+    isLive = false,
 }: SensorCardProps) {
     const hasData = hasAnyReading(
         temperature,
@@ -36,7 +39,12 @@ export default function SensorCard({
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-            <CardHeader title={title} topic={topic} sensorId={sensorId} />
+            <CardHeader
+                title={title}
+                topic={topic}
+                sensorId={sensorId}
+                isLive={isLive}
+            />
 
             {hasData ? (
                 <ReadingsGrid
@@ -59,9 +67,10 @@ interface CardHeaderProps {
     title: string;
     topic: string;
     sensorId?: string;
+    isLive: boolean;
 }
 
-function CardHeader({ title, topic, sensorId }: CardHeaderProps) {
+function CardHeader({ title, topic, sensorId, isLive }: CardHeaderProps) {
     return (
         <div className="flex justify-between items-start mb-4">
             <div>
@@ -77,17 +86,25 @@ function CardHeader({ title, topic, sensorId }: CardHeaderProps) {
                     </p>
                 )}
             </div>
-            <LiveIndicator />
+            <LiveIndicator isLive={isLive} />
         </div>
     );
 }
 
-function LiveIndicator() {
+interface LiveIndicatorProps {
+    isLive: boolean;
+}
+
+function LiveIndicator({ isLive }: LiveIndicatorProps) {
     return (
         <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-                Live
+            <div
+                className={`w-2 h-2 rounded-full ${isLive ? "bg-green-500 animate-pulse" : "bg-gray-400"}`}
+            ></div>
+            <span
+                className={`text-xs ${isLive ? "text-green-600 dark:text-green-400" : "text-gray-500 dark:text-gray-400"}`}
+            >
+                {isLive ? "Live" : "Offline"}
             </span>
         </div>
     );
@@ -190,11 +207,18 @@ interface CardFooterProps {
 }
 
 function CardFooter({ timestamp }: CardFooterProps) {
+    const timeAgo = useTimeAgo(timestamp);
+
     return (
         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-                Last updated: {format(new Date(timestamp), "PPpp")}
-            </p>
+            <div className="flex justify-between items-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {format(new Date(timestamp), "PPp")}
+                </p>
+                <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {timeAgo}
+                </p>
+            </div>
         </div>
     );
 }
