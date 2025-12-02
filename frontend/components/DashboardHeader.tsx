@@ -37,7 +37,7 @@ export default function DashboardHeader({
                         <button
                             onClick={onRefresh}
                             disabled={!connected}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                            className="flex cursor-pointer items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                             title="Refresh data"
                         >
                             <RefreshCw className="w-4 h-4" />
