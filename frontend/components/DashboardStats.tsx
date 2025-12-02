@@ -38,7 +38,7 @@ export default function DashboardStats({
       <StatCard
         icon={<Wifi className="w-6 h-6 text-purple-600 dark:text-purple-400" />}
         value={latestData && isConnected ? "Live" : "Waiting"}
-        label="Status"
+        label="Server Status"
         bgColor="bg-purple-100 dark:bg-purple-900/30"
       />
     </div>

@@ -44,7 +44,7 @@ class WebSocketService {
         try {
             const data = await SensorData.find()
                 .sort({ timestamp: -1 })
-                .limit(50);
+                .limit(100);
 
             socket.emit("initial-data", data);
             console.log(`📤 Sent ${data.length} recent records to ${socket.id}`);
