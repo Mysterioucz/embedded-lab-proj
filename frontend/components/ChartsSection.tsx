@@ -34,13 +34,6 @@ export default function ChartsSection({ sensorData }: ChartsSectionProps) {
                 />
                 <SensorChart
                     data={sensorData}
-                    dataKey="pressure"
-                    title="Pressure"
-                    color="#8B5CF6"
-                    unit="hPa"
-                />
-                <SensorChart
-                    data={sensorData}
                     dataKey="light"
                     title="Light"
                     color="#F59E0B"
