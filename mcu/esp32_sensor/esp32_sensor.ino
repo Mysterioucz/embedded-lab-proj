@@ -29,8 +29,10 @@ const char* ssid = "aisfibre_2.4G_Nui";
 const char* password = "Sajja_nui";
 
 // MQTT Configuration
-const char* mqtt_server = "crossover.proxy.rlwy.net";
-const int mqtt_port = 45028;
+const char* mqtt_server = "ballast.proxy.rlwy.net";    // Railway Mosquitto TCP proxy domain
+const int mqtt_port = 17647;                            // Railway Mosquitto TCP proxy port
+const char* mqtt_user = "chat";                         // MQTT username
+const char* mqtt_password = "5v8j8u1xla0xe3juq7efuwjdf2yu5wsn";  // MQTT password
 const char* mqtt_topic = "home/sensors/esp32";
 const char* sensor_id = "nucleo-f411re-001";
 
@@ -390,8 +392,8 @@ bool connectMQTT() {
 
   bool connected = client.connect(
     clientId.c_str(),
-    NULL,  // username (NULL for no auth)
-    NULL,  // password (NULL for no auth)
+    mqtt_user,      // username for authentication
+    mqtt_password,  // password for authentication
     willTopic.c_str(),
     0,     // will QoS
     true,  // will retain
