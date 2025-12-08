@@ -29,9 +29,17 @@ class WebSocketService {
                 this.handleGetHistory(socket, params);
             });
 
-            // Handle disconnect
-            socket.on("disconnect", () => {
-                console.log(`🔌 Frontend client disconnected: ${socket.id}`);
+            // Handle disconnect (quiet during development restarts)
+            socket.on("disconnect", (reason) => {
+                // Only log if it's not a server restart (reduces noise during nodemon)
+                if (
+                    reason !== "transport close" &&
+                    reason !== "server namespace disconnect"
+                ) {
+                    console.log(
+                        `🔌 Frontend client disconnected: ${socket.id} (${reason})`,
+                    );
+                }
             });
         });
     }
@@ -47,7 +55,9 @@ class WebSocketService {
                 .limit(100);
 
             socket.emit("initial-data", data);
-            console.log(`📤 Sent ${data.length} recent records to ${socket.id}`);
+            console.log(
+                `📤 Sent ${data.length} recent records to ${socket.id}`,
+            );
         } catch (error) {
             console.error("Error fetching initial data:", error);
             socket.emit("error", {
@@ -71,7 +81,9 @@ class WebSocketService {
                 .limit(limit);
 
             socket.emit("history-data", data);
-            console.log(`📚 Sent ${data.length} historical records to ${socket.id}`);
+            console.log(
+                `📚 Sent ${data.length} historical records to ${socket.id}`,
+            );
         } catch (error) {
             console.error("Error fetching history:", error);
             socket.emit("error", {

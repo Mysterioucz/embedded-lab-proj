@@ -37,9 +37,7 @@ mongoose.connection.on("error", (err) => {
     console.error("MongoDB connection error:", err);
 });
 
-mongoose.connection.on("disconnected", () => {
-    console.log("MongoDB disconnected");
-});
+// Removed disconnected event listener to reduce log noise during shutdown
 
 module.exports = {
     connectDatabase,

@@ -12,6 +12,7 @@ class MQTTService {
         this.isExternal = process.env.EXTERNAL_MQTT_BROKER === "true";
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
+        this.isClosing = false;
     }
 
     /**
@@ -261,12 +262,66 @@ class MQTTService {
     }
 
     /**
+     * Parse timestamp from STM32 format (DD/MM/YYYY HH:MM:SS)
+     * @param {string} timeString - Time string from STM32
+     * @returns {Date} Parsed date object
+     */
+    parseTimestamp(timeString) {
+        try {
+            // Format: "08/12/2025 14:01:57" (DD/MM/YYYY HH:MM:SS)
+            const parts = timeString.trim().split(" ");
+            if (parts.length !== 2) {
+                throw new Error("Invalid timestamp format");
+            }
+
+            const [datePart, timePart] = parts;
+            const [day, month, year] = datePart.split("/").map(Number);
+            const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+            // JavaScript Date expects: year, month (0-indexed), day, hours, minutes, seconds
+            const date = new Date(
+                year,
+                month - 1,
+                day,
+                hours,
+                minutes,
+                seconds,
+            );
+
+            // Validate the date
+            if (isNaN(date.getTime())) {
+                throw new Error("Invalid date values");
+            }
+
+            return date;
+        } catch (error) {
+            console.warn(
+                `⚠️ Failed to parse timestamp "${timeString}": ${error.message}, using current time`,
+            );
+            return new Date();
+        }
+    }
+
+    /**
      * Save sensor data to database
      * @param {string} topic - MQTT topic
      * @param {Object} data - Sensor data
      * @returns {Promise<Object>} Saved sensor data
      */
     async saveSensorData(topic, data) {
+        // Parse timestamp from STM32 format
+        let timestamp = new Date();
+        if (data.time) {
+            timestamp = this.parseTimestamp(data.time);
+        } else if (data.timestamp) {
+            // Try to parse as ISO string first
+            timestamp = new Date(data.timestamp);
+            if (isNaN(timestamp.getTime())) {
+                // If ISO parse fails, try STM32 format
+                timestamp = this.parseTimestamp(data.timestamp);
+            }
+        }
+
         const sensorData = new SensorData({
             topic,
             sensorId: data.sensorId || data.sensor_id || topic.split("/").pop(),
@@ -275,14 +330,14 @@ class MQTTService {
             pressure: data.pressure,
             light: data.light || data.lux,
             motion: data.motion,
-            timestamp:
-                data.timestamp || data.time
-                    ? new Date(data.timestamp || data.time)
-                    : new Date(),
+            timestamp: timestamp,
         });
 
         await sensorData.save();
-        console.log("💾 Saved to database");
+        console.log(
+            "💾 Saved to database with timestamp:",
+            timestamp.toISOString(),
+        );
 
         return sensorData;
     }
@@ -357,6 +412,12 @@ class MQTTService {
      * Close MQTT connection/broker
      */
     close() {
+        // Prevent multiple close calls
+        if (this.isClosing) {
+            return Promise.resolve();
+        }
+        this.isClosing = true;
+
         return new Promise((resolve) => {
             // Close external client
             if (this.client) {

@@ -106,23 +106,30 @@ async function startServer() {
 
     // Start HTTP server
     server.listen(PORT, () => {
-        console.log("\n" + "=".repeat(60));
+        console.log("\n\n" + "━".repeat(60));
         console.log("🚀 IoT Sensor Backend Server Started");
-        console.log("=".repeat(60));
+        console.log("━".repeat(60));
         console.log(`📡 HTTP Server:     http://localhost:${PORT}`);
         console.log(`🔌 Socket.io:       ws://localhost:${PORT}`);
         console.log(`📊 REST API:        http://localhost:${PORT}/api/sensors`);
         console.log(
             `🌐 Frontend URL:    ${process.env.FRONTEND_URL || "http://localhost:3000"}`,
         );
-        console.log("=".repeat(60) + "\n");
+        console.log("━".repeat(60) + "\n");
     });
 }
 
 /**
  * Graceful shutdown handler
  */
+let isShuttingDown = false;
 async function gracefulShutdown(signal) {
+    // Prevent multiple shutdown calls
+    if (isShuttingDown) {
+        return;
+    }
+    isShuttingDown = true;
+
     console.log(`\n${signal} signal received: closing services...`);
 
     try {
