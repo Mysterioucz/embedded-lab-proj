@@ -1,41 +1,18 @@
-/*
- * ESP32 UART-MQTT Bridge for STM32 Nucleo F411RE
- * WITH COMPREHENSIVE ERROR HANDLING
- *
- * This code receives JSON sensor data from STM32 via UART
- * and forwards it to the backend server via MQTT protocol.
- *
- * Hardware Connections:
- * - STM32 TX (PA9/USART1) -> ESP32 RX (GPIO16)
- * - STM32 RX (PA10/USART1) -> ESP32 TX (GPIO17)
- * - STM32 GND -> ESP32 GND
- *
- * Expected JSON format from STM32:
- * {"temp":25.5,"hum":60.0,"lux":450.0,"time":"08/12/2024 11:40:00"}
- *
- * Libraries Required:
- * - PubSubClient (MQTT)
- * - WiFi
- * - ArduinoJson (Version 6.x)
- */
-
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// ==================== CONFIGURATION ====================
 // WiFi Configuration
-const char* ssid = "Prime";          // Replace with your WiFi SSID
-const char* password = "0926610006";  // Replace with your WiFi password
+const char* ssid = "Chatrin";          // Replace with your WiFi SSID
+const char* password = "Chromeisreals";  // Replace with your WiFi password
 
 // MQTT Configuration
-const char* mqtt_server = "172.20.10.2";    // Replace with your backend server IP
+const char* mqtt_server = "172.20.10.4";    // Replace with your backend server IP
 const int mqtt_port = 1883;
 const char* mqtt_topic = "home/sensors/esp32";
 const char* sensor_id = "nucleo-f411re-001";
 
 // UART Configuration (for STM32 connection)
-// ESP32-S3 UART2 pins
 #define RXD2 18  // GPIO18 - Connect to STM32 TX (PA9)
 #define TXD2 17  // GPIO17 - Connect to STM32 RX (PA10)
 #define BAUD_RATE 115200
@@ -54,7 +31,6 @@ const char* sensor_id = "nucleo-f411re-001";
 const int MAX_BUFFER_SIZE = 512;
 const int MAX_JSON_SIZE = 384;
 
-// ==================== ERROR CODES ====================
 enum ErrorCode {
   ERR_NONE = 0,
   ERR_WIFI_INIT = 1,
@@ -69,7 +45,6 @@ enum ErrorCode {
   ERR_WATCHDOG_FEED = 11
 };
 
-// ==================== OBJECTS ====================
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -101,7 +76,6 @@ struct Statistics {
 unsigned long lastLedBlink = 0;
 int ledBlinkPattern = 0;  // 0=off, 1=slow, 2=fast, 3=solid
 
-// ==================== WATCHDOG & SYSTEM MONITORING ====================
 hw_timer_t *watchdogTimer = NULL;
 
 void IRAM_ATTR resetModule() {
@@ -283,7 +257,7 @@ bool connectWiFi() {
     Serial.print(".");
     dotCount++;
     if (dotCount % 40 == 0) Serial.println();
-    feedWatchdog();
+    // feedWatchdog();
   }
 
   Serial.println();
@@ -655,7 +629,7 @@ void processUARTData(String jsonString) {
   delay(50);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  feedWatchdog();
+  // feedWatchdog();
 }
 
 void printStatistics() {
@@ -767,12 +741,12 @@ void setup() {
     Serial2.read();
   }
 
-  feedWatchdog();
+  // feedWatchdog();
 }
 
 // ==================== MAIN LOOP ====================
 void loop() {
-  feedWatchdog();
+  // feedWatchdog();
   updateLED();  // Update LED status indicator
 
   // Check WiFi health periodically
