@@ -1,57 +1,101 @@
+const mqtt = require("mqtt");
 const aedes = require("aedes");
 const net = require("net");
 const SensorData = require("../models/SensorData");
 
 class MQTTService {
     constructor() {
-        this.broker = aedes();
+        this.client = null;
+        this.broker = null;
         this.server = null;
-        this.port = process.env.MQTT_PORT || 1883;
         this.socketIO = null;
+        this.isExternal = process.env.EXTERNAL_MQTT_BROKER === "true";
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
     }
 
     /**
-     * Initialize MQTT broker and set up event handlers
+     * Initialize MQTT service
      * @param {Object} io - Socket.io instance for broadcasting
      */
     initialize(io) {
         this.socketIO = io;
-        this.setupEventHandlers();
-        this.createServer();
+
+        if (this.isExternal) {
+            this.connectToExternalBroker();
+        } else {
+            this.startLocalBroker();
+        }
     }
 
     /**
-     * Create MQTT server
+     * Start local Aedes MQTT broker (for development)
      */
-    createServer() {
+    startLocalBroker() {
+        const port = process.env.MQTT_PORT || 1883;
+
+        this.broker = aedes();
         this.server = net.createServer(this.broker.handle);
 
-        this.server.listen(this.port, () => {
-            console.log(`🚀 MQTT Broker running on port ${this.port}`);
+        this.server.listen(port, () => {
+            console.log(`🚀 Local MQTT Broker (Aedes) running on port ${port}`);
+            console.log(`📡 Connect with: mqtt://localhost:${port}`);
         });
 
         this.server.on("error", (error) => {
-            console.error("❌ MQTT server error:", error.message);
+            if (error.code === "EADDRINUSE") {
+                console.error(
+                    `❌ Port ${port} is already in use. Please free the port or use external broker.`,
+                );
+            } else {
+                console.error("❌ MQTT server error:", error.message);
+            }
         });
+
+        // Setup Aedes broker event handlers
+        this.setupAedesHandlers();
     }
 
     /**
-     * Set up MQTT broker event handlers
+     * Setup Aedes broker event handlers
      */
-    setupEventHandlers() {
+    setupAedesHandlers() {
         // Client connected
         this.broker.on("client", (client) => {
-            console.log(`📱 Client Connected: ${client.id}`);
+            console.log(`📱 MQTT Client Connected: ${client.id}`);
         });
 
         // Client disconnected
         this.broker.on("clientDisconnect", (client) => {
-            console.log(`📴 Client Disconnected: ${client.id}`);
+            console.log(`📴 MQTT Client Disconnected: ${client.id}`);
         });
 
         // Message published
         this.broker.on("publish", async (packet, client) => {
-            await this.handleMessage(packet, client);
+            // Skip system topics
+            if (packet.topic.startsWith("$SYS")) {
+                return;
+            }
+
+            const topic = packet.topic;
+            const message = packet.payload.toString();
+
+            console.log(`📩 Received on topic "${topic}":`, message);
+
+            try {
+                // Parse JSON message
+                const data = this.parseMessage(message);
+
+                // Create and save sensor data
+                const sensorData = await this.saveSensorData(topic, data);
+
+                // Broadcast to WebSocket clients
+                this.broadcastToClients(topic, sensorData);
+
+                console.log("✅ Message processed successfully");
+            } catch (error) {
+                console.error("❌ Error processing message:", error.message);
+            }
         });
 
         // Client subscribed
@@ -70,24 +114,126 @@ class MQTTService {
     }
 
     /**
-     * Handle incoming MQTT message
-     * @param {Object} packet - MQTT packet
-     * @param {Object} client - MQTT client
+     * Connect to external MQTT broker (e.g., Mosquitto on Railway)
      */
-    async handleMessage(packet, client) {
+    connectToExternalBroker() {
+        const mqttHost = process.env.MQTT_HOST || "localhost";
+        const mqttPort = process.env.MQTT_PORT || 1883;
+        const mqttUsername = process.env.MQTT_USERNAME;
+        const mqttPassword = process.env.MQTT_PASSWORD;
+
+        const options = {
+            host: mqttHost,
+            port: parseInt(mqttPort),
+            protocol: "mqtt",
+            reconnectPeriod: 5000,
+            connectTimeout: 30000,
+        };
+
+        // Add authentication if provided
+        if (mqttUsername && mqttPassword) {
+            options.username = mqttUsername;
+            options.password = mqttPassword;
+        }
+
+        console.log(
+            `🔌 Connecting to external MQTT broker at ${mqttHost}:${mqttPort}...`,
+        );
+
+        this.client = mqtt.connect(options);
+        this.setupClientHandlers();
+    }
+
+    /**
+     * Set up MQTT client event handlers (for external broker)
+     */
+    setupClientHandlers() {
+        // Connection successful
+        this.client.on("connect", () => {
+            console.log("✅ Connected to external MQTT broker");
+            this.reconnectAttempts = 0;
+
+            // Subscribe to all sensor topics
+            this.subscribeToTopics();
+        });
+
+        // Message received
+        this.client.on("message", async (topic, message) => {
+            await this.handleMessage(topic, message);
+        });
+
+        // Connection error
+        this.client.on("error", (error) => {
+            console.error("❌ MQTT connection error:", error.message);
+        });
+
+        // Reconnecting
+        this.client.on("reconnect", () => {
+            this.reconnectAttempts++;
+            console.log(
+                `🔄 Reconnecting to MQTT broker... (attempt ${this.reconnectAttempts})`,
+            );
+
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.error(
+                    "❌ Max reconnection attempts reached. Stopping reconnection.",
+                );
+                this.client.end();
+            }
+        });
+
+        // Connection closed
+        this.client.on("close", () => {
+            console.log("🔌 Disconnected from MQTT broker");
+        });
+
+        // Offline
+        this.client.on("offline", () => {
+            console.log("📴 MQTT client is offline");
+        });
+    }
+
+    /**
+     * Subscribe to sensor topics
+     */
+    subscribeToTopics() {
+        const topics = [
+            "home/sensors/#", // Subscribe to all sensor topics
+            "sensor/#",
+            "esp32/#",
+        ];
+
+        topics.forEach((topic) => {
+            this.client.subscribe(topic, (err) => {
+                if (err) {
+                    console.error(
+                        `❌ Failed to subscribe to ${topic}:`,
+                        err.message,
+                    );
+                } else {
+                    console.log(`📬 Subscribed to topic: ${topic}`);
+                }
+            });
+        });
+    }
+
+    /**
+     * Handle incoming MQTT message (for external broker)
+     * @param {string} topic - MQTT topic
+     * @param {Buffer} message - Message buffer
+     */
+    async handleMessage(topic, message) {
         // Skip system topics
-        if (packet.topic.startsWith("$SYS")) {
+        if (topic.startsWith("$SYS")) {
             return;
         }
 
-        const topic = packet.topic;
-        const message = packet.payload.toString();
-
-        console.log(`📩 Received on topic "${topic}":`, message);
+        const messageStr = message.toString();
+        console.log(`📩 Received on topic "${topic}":`, messageStr);
 
         try {
             // Parse JSON message
-            const data = this.parseMessage(message);
+            const data = this.parseMessage(messageStr);
 
             // Create and save sensor data
             const sensorData = await this.saveSensorData(topic, data);
@@ -125,11 +271,14 @@ class MQTTService {
             topic,
             sensorId: data.sensorId || data.sensor_id || topic.split("/").pop(),
             temperature: data.temperature || data.temp,
-            humidity: data.humidity,
+            humidity: data.humidity || data.hum,
             pressure: data.pressure,
-            light: data.light,
+            light: data.light || data.lux,
             motion: data.motion,
-            timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+            timestamp:
+                data.timestamp || data.time
+                    ? new Date(data.timestamp || data.time)
+                    : new Date(),
         });
 
         await sensorData.save();
@@ -160,27 +309,64 @@ class MQTTService {
      */
     publish(topic, data) {
         const message = JSON.stringify(data);
-        this.broker.publish(
-            {
-                topic,
-                payload: message,
-                qos: 0,
-                retain: false,
-            },
-            (error) => {
+
+        // If using external broker
+        if (this.isExternal && this.client) {
+            if (!this.client.connected) {
+                console.error("❌ Cannot publish: MQTT client not connected");
+                return;
+            }
+
+            this.client.publish(topic, message, { qos: 0 }, (error) => {
                 if (error) {
-                    console.error("Error publishing message:", error);
+                    console.error(
+                        "❌ Error publishing message:",
+                        error.message,
+                    );
+                } else {
+                    console.log(`📤 Published to topic "${topic}"`);
                 }
-            },
-        );
+            });
+        }
+        // If using local broker
+        else if (this.broker) {
+            this.broker.publish(
+                {
+                    topic,
+                    payload: message,
+                    qos: 0,
+                    retain: false,
+                },
+                (error) => {
+                    if (error) {
+                        console.error(
+                            "❌ Error publishing message:",
+                            error.message,
+                        );
+                    } else {
+                        console.log(`📤 Published to topic "${topic}"`);
+                    }
+                },
+            );
+        } else {
+            console.error("❌ Cannot publish: No MQTT broker available");
+        }
     }
 
     /**
-     * Close MQTT broker
+     * Close MQTT connection/broker
      */
     close() {
         return new Promise((resolve) => {
-            if (this.server) {
+            // Close external client
+            if (this.client) {
+                this.client.end(true, () => {
+                    console.log("🔒 MQTT client closed");
+                    resolve();
+                });
+            }
+            // Close local broker
+            else if (this.server && this.broker) {
                 this.broker.close(() => {
                     this.server.close(() => {
                         console.log("🔒 MQTT broker closed");
@@ -191,6 +377,17 @@ class MQTTService {
                 resolve();
             }
         });
+    }
+
+    /**
+     * Check if MQTT is connected
+     */
+    isConnected() {
+        if (this.isExternal) {
+            return this.client && this.client.connected;
+        } else {
+            return this.server && this.server.listening;
+        }
     }
 }
 
