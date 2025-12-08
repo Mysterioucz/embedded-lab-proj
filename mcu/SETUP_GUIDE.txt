@@ -1,0 +1,600 @@
+================================================================================
+    ESP32 + STM32 NUCLEO F411RE SENSOR SYSTEM - COMPLETE SETUP GUIDE
+================================================================================
+
+Date: December 2024
+System: IoT Sensor Hub with MQTT Communication
+
+================================================================================
+                            SYSTEM ARCHITECTURE
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         COMPLETE SYSTEM DIAGRAM                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌─────────────┐
+    │   DHT11     │ (Temperature & Humidity)
+    │  Sensor     │
+    └──────┬──────┘
+           │ PB5
+           │
+    ┌──────▼──────┐     ┌─────────────┐
+    │     LDR     │────►│   ADC (PA0) │  (Light Sensor)
+    │  + 10kΩ     │     └─────────────┘
+    └─────────────┘
+                        ┌─────────────┐
+    ┌─────────────┐     │   DS1302    │
+    │  DS1302 RTC │     │   CLK: PB4  │  (Real-Time Clock)
+    │  CLK ───────┼────►│   DAT: PB10 │
+    │  DAT ───────┼────►│   RST: PA8  │
+    │  RST ───────┼────►└─────────────┘
+    └─────────────┘
+
+         ┌────────────────────────────────────┐
+         │   STM32 NUCLEO F411RE             │
+         │                                    │
+         │   • Reads all sensors             │
+         │   • Formats JSON data             │
+         │   • Sends via USART1              │
+         │                                    │
+         │   PA9 (TX) ─────────────┐        │
+         │   PA10 (RX) ────────┐   │        │
+         │   GND ──────────┐   │   │        │
+         └─────────────────┼───┼───┼────────┘
+                           │   │   │
+                          GND RX  TX
+                           │   │   │
+         ┌─────────────────┼───┼───┼────────┐
+         │                 │   │   │        │
+         │   GND ──────────┘   │   │        │
+         │   GPIO16 (RX2) ─────┘   │        │
+         │   GPIO17 (TX2) ─────────┘        │
+         │                                    │
+         │        ESP32 DEV MODULE           │
+         │                                    │
+         │   • Receives JSON via UART        │
+         │   • Connects to WiFi              │
+         │   • Publishes to MQTT             │
+         └────────────┬───────────────────────┘
+                      │
+                      │ WiFi (2.4GHz)
+                      │
+         ┌────────────▼───────────────────────┐
+         │     WiFi Router / Access Point     │
+         └────────────┬───────────────────────┘
+                      │
+                      │ Network
+                      │
+         ┌────────────▼───────────────────────┐
+         │      Backend Server (Node.js)      │
+         │                                     │
+         │   • MQTT Broker (Port 1883)        │
+         │   • MongoDB Database               │
+         │   • WebSocket Server               │
+         │   • REST API                       │
+         └────────────┬───────────────────────┘
+                      │
+                      │ HTTP/WebSocket
+                      │
+         ┌────────────▼───────────────────────┐
+         │    Web Dashboard (React/Next.js)   │
+         │                                     │
+         │   • Real-time sensor display       │
+         │   • Historical data charts         │
+         │   • Alerts & notifications         │
+         └────────────────────────────────────┘
+
+================================================================================
+                        HARDWARE CONNECTIONS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. STM32 NUCLEO F411RE SENSORS                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+DHT11 Temperature & Humidity Sensor:
+    DHT11 Pin           STM32 Pin       Description
+    ─────────────────────────────────────────────────
+    VCC                 3.3V            Power supply
+    GND                 GND             Ground
+    DATA                PB5             Data pin (bidirectional)
+
+LDR Light Sensor (with voltage divider):
+    Connection:
+    3.3V ──┬─── LDR ───┬─── ADC (PA0)
+           │           │
+           │          10kΩ
+           │           │
+          GND ─────────┴─── GND
+
+    Component           STM32 Pin       Description
+    ─────────────────────────────────────────────────
+    LDR (top)           3.3V            Light dependent resistor
+    ADC (middle)        PA0             Analog input
+    10kΩ (bottom)       GND             Pull-down resistor
+
+DS1302 Real-Time Clock:
+    DS1302 Pin          STM32 Pin       Description
+    ─────────────────────────────────────────────────
+    VCC                 3.3V or 5V      Power supply
+    GND                 GND             Ground
+    CLK (SCLK)          PB4             Clock signal
+    DAT (I/O)           PB10            Data (bidirectional)
+    RST (CE)            PA8             Chip enable/reset
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2. STM32 TO ESP32 UART CONNECTION                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    STM32 Nucleo F411RE         ESP32 Dev Module
+    ───────────────────────────────────────────────
+    PA9  (USART1 TX)    ────►   GPIO16 (RX2)
+    PA10 (USART1 RX)    ◄────   GPIO17 (TX2)
+    GND                 ────────  GND
+
+    [Optional: 3.3V power sharing if using same supply]
+    3.3V                ────────  3.3V
+
+⚠️  IMPORTANT:
+    - TX connects to RX, RX connects to TX (crossover connection)
+    - Both devices must share common ground (GND)
+    - Both use 3.3V logic levels (compatible)
+    - Baud rate: 115200 (must match on both sides)
+
+================================================================================
+                        SOFTWARE CONFIGURATION
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. STM32 CONFIGURATION (STM32CubeIDE)                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Required Peripherals:
+    - USART1: 115200 baud, 8N1 (for ESP32 communication)
+    - USART2: 115200 baud, 8N1 (for USB debugging)
+    - ADC1: PA0 channel (for LDR)
+    - GPIO: PB5, PB4, PB10, PA8 (for DHT11 and DS1302)
+
+GPIO Pin Configuration:
+    PA0  - Analog Input (ADC1_IN0)
+    PA8  - Output (DS1302 RST)
+    PA9  - USART1_TX
+    PA10 - USART1_RX
+    PB4  - Output (DS1302 CLK)
+    PB5  - Bidirectional (DHT11 DATA - dynamically switched)
+    PB10 - Bidirectional (DS1302 DAT - dynamically switched)
+
+Code Requirements:
+    - Enable float printf in project settings
+    - Enable DWT for microsecond delays
+    - JSON format: {"temp":25.5,"hum":60.0,"lux":450.0,"time":"08/12/2024 11:40:00"}
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2. ESP32 CONFIGURATION (Arduino IDE)                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Arduino IDE Setup:
+    1. Add ESP32 board support:
+       File → Preferences → Additional Board Manager URLs:
+       https://dl.espressif.com/dl/package_esp32_index.json
+
+    2. Install ESP32 boards:
+       Tools → Board → Board Manager → Search "esp32" → Install
+
+    3. Install libraries:
+       - PubSubClient (by Nick O'Leary)
+       - ArduinoJson (by Benoit Blanchon) v6.x
+
+Board Settings:
+    Board: "ESP32 Dev Module" (or your specific ESP32 board)
+    Upload Speed: 921600
+    CPU Frequency: 240MHz
+    Flash Frequency: 80MHz
+    Flash Mode: QIO
+    Flash Size: 4MB (or as per your module)
+    Partition Scheme: Default 4MB
+    Port: Select your COM port
+
+Code Configuration (esp32_sensor.ino):
+    Line 28-29:  Update WiFi credentials
+        const char* ssid = "YOUR_WIFI_SSID";
+        const char* password = "YOUR_WIFI_PASSWORD";
+
+    Line 31:     Update backend server IP
+        const char* mqtt_server = "192.168.1.100";
+
+    Line 34:     Update sensor ID (optional)
+        const char* sensor_id = "nucleo-f411re-001";
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3. BACKEND SERVER CONFIGURATION (Node.js)                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Prerequisites:
+    - Node.js v16 or later
+    - MongoDB (local or cloud)
+    - npm or yarn
+
+Installation Steps:
+    1. Navigate to backend directory:
+       cd embedded-lab-proj/backend
+
+    2. Install dependencies:
+       npm install
+
+    3. Configure environment (.env file):
+       PORT=3001
+       MONGODB_URI=mongodb://localhost:27017/sensor-dashboard
+       MQTT_PORT=1883
+       NODE_ENV=development
+
+    4. Start the server:
+       npm start
+
+    5. Verify MQTT broker is running:
+       Server should show: "🚀 MQTT Broker running on port 1883"
+
+Testing MQTT Connection:
+    # Using mosquitto command line tools:
+    mosquitto_sub -h localhost -t "home/sensors/#" -v
+
+    # Or use MQTT Explorer GUI:
+    Download from: http://mqtt-explorer.com/
+
+================================================================================
+                        DATA FLOW & JSON FORMAT
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DATA FORMAT AT EACH STAGE                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Stage 1: STM32 → ESP32 (via UART)
+─────────────────────────────────
+Format: Simple JSON with sensor readings
+Example:
+{
+  "temp": 25.5,
+  "hum": 60.0,
+  "lux": 450.0,
+  "time": "08/12/2024 11:40:00"
+}
+
+Stage 2: ESP32 → Backend (via MQTT)
+────────────────────────────────────
+Format: Enhanced JSON with metadata
+Topic: home/sensors/esp32
+Example:
+{
+  "sensorId": "nucleo-f411re-001",
+  "temperature": 25.5,
+  "humidity": 60.0,
+  "light": 450.0,
+  "time": "08/12/2024 11:40:00",
+  "timestamp": 1234567890,
+  "rssi": -67,
+  "source": "nucleo-f411re"
+}
+
+Stage 3: Backend → Database (MongoDB)
+──────────────────────────────────────
+Format: Document with processing metadata
+Example:
+{
+  "_id": ObjectId("..."),
+  "topic": "home/sensors/esp32",
+  "sensorId": "nucleo-f411re-001",
+  "temperature": 25.5,
+  "humidity": 60.0,
+  "light": 450.0,
+  "timestamp": ISODate("2024-12-08T11:40:00.000Z"),
+  "data": { /* original data */ },
+  "createdAt": ISODate("2024-12-08T11:40:00.000Z")
+}
+
+Stage 4: Backend → Frontend (via WebSocket)
+────────────────────────────────────────────
+Format: Real-time event with formatted data
+Event: "sensor-data"
+Example:
+{
+  "topic": "home/sensors/esp32",
+  "data": {
+    "sensorId": "nucleo-f411re-001",
+    "temperature": 25.5,
+    "humidity": 60.0,
+    "light": 450.0,
+    "time": "08/12/2024 11:40:00"
+  }
+}
+
+================================================================================
+                        TESTING & VERIFICATION
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP-BY-STEP TESTING PROCEDURE                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Test 1: STM32 Sensor Reading
+─────────────────────────────
+1. Connect STM32 to PC via USB
+2. Open serial terminal (e.g., PuTTY, Tera Term)
+3. Settings: 115200 baud, 8N1
+4. You should see JSON data every 2 seconds:
+   ✅ PASS: JSON appears with sensor values
+   ❌ FAIL: No output → Check USART2 configuration
+
+Test 2: ESP32 WiFi Connection
+──────────────────────────────
+1. Upload code to ESP32
+2. Open Arduino Serial Monitor (115200 baud)
+3. Look for:
+   ✅ PASS: "✅ WiFi connected successfully!"
+   ❌ FAIL: "❌ WiFi connection failed!" → Check SSID/password
+
+Test 3: UART Communication
+───────────────────────────
+1. Connect STM32 TX to ESP32 RX (PA9 → GPIO16)
+2. Connect STM32 RX to ESP32 TX (PA10 → GPIO17)
+3. Connect GND to GND
+4. Check ESP32 Serial Monitor for:
+   ✅ PASS: "📨 Received from STM32: {json data}"
+   ❌ FAIL: No data → Check wiring, swap TX/RX if needed
+
+Test 4: MQTT Connection
+────────────────────────
+1. Ensure backend server is running
+2. Check ESP32 Serial Monitor for:
+   ✅ PASS: "✅ Connected!" to MQTT
+   ❌ FAIL: "❌ Failed, rc=..." → Check server IP/firewall
+
+Test 5: Data Publishing
+────────────────────────
+1. Use MQTT Explorer or mosquitto_sub
+2. Subscribe to topic: home/sensors/#
+3. Look for incoming messages
+   ✅ PASS: Messages appear with sensor data
+   ❌ FAIL: No messages → Check MQTT connection
+
+Test 6: Backend Processing
+───────────────────────────
+1. Check backend console for:
+   "📩 Received on topic 'home/sensors/esp32'"
+   "💾 Saved to database"
+   ✅ PASS: Data is being processed
+   ❌ FAIL: Check backend logs for errors
+
+Test 7: Database Storage
+─────────────────────────
+1. Open MongoDB Compass or mongo shell
+2. Query database: db.sensordatas.find().limit(5)
+3. Check for recent entries
+   ✅ PASS: Data is being stored
+   ❌ FAIL: Check MongoDB connection
+
+Test 8: Frontend Display
+─────────────────────────
+1. Open web browser
+2. Navigate to: http://localhost:3000
+3. Check for real-time data updates
+   ✅ PASS: Dashboard shows live sensor data
+   ❌ FAIL: Check WebSocket connection
+
+================================================================================
+                        TROUBLESHOOTING GUIDE
+================================================================================
+
+Problem: STM32 not sending data
+Solution:
+  □ Check USART1 is configured (not just USART2)
+  □ Verify PA9/PA10 are set to USART1_TX/RX
+  □ Check JSON formatting is correct
+  □ Enable float printf in project settings
+  □ Verify sensors are connected and responding
+
+Problem: ESP32 not receiving data
+Solution:
+  □ Verify UART wiring (TX→RX, RX→TX, GND→GND)
+  □ Check baud rate matches (115200 on both)
+  □ Swap TX/RX connections if still not working
+  □ Test with logic analyzer if available
+  □ Check voltage levels are compatible (both 3.3V)
+
+Problem: WiFi connection fails
+Solution:
+  □ Use 2.4GHz WiFi (ESP32 doesn't support 5GHz)
+  □ Check SSID and password are correct (case-sensitive)
+  □ Move ESP32 closer to router
+  □ Check WiFi isn't using special characters
+  □ Try different WiFi network
+
+Problem: MQTT connection fails
+Solution:
+  □ Verify backend server is running
+  □ Check server IP address is correct
+  □ Ensure port 1883 is not blocked by firewall
+  □ Test with: telnet <server_ip> 1883
+  □ Check server logs for connection attempts
+  □ Try connecting with MQTT Explorer first
+
+Problem: JSON parsing errors
+Solution:
+  □ Check JSON format matches expected structure
+  □ Verify STM32 sends complete JSON (ends with \n)
+  □ Look for buffer overflow warnings
+  □ Test JSON at: https://jsonlint.com/
+  □ Print raw UART data to debug format
+
+Problem: High packet loss
+Solution:
+  □ Check WiFi signal strength (RSSI value)
+  □ Reduce data transmission rate on STM32
+  □ Increase MQTT keepalive timeout
+  □ Check network congestion
+  □ Use QoS level 1 or 2 for MQTT
+
+Problem: LDR readings too high/low
+Solution:
+  □ Verify LDR wiring configuration (top or bottom)
+  □ Check 10kΩ resistor value with multimeter
+  □ Calibrate formula based on known light levels
+  □ Use logarithmic formula instead of linear
+  □ Test in different lighting conditions
+
+Problem: DS1302 time not syncing
+Solution:
+  □ Set initial time in DS1302_Init() function
+  □ Use BCD format (0x11 = 11, not 11 decimal)
+  □ Check DS1302 battery (if coin cell present)
+  □ Verify CLK, DAT, RST connections
+  □ Check for timing issues (use oscilloscope)
+
+================================================================================
+                        PERFORMANCE OPTIMIZATION
+================================================================================
+
+ESP32 Power Saving:
+  - Use WiFi.setSleep(WIFI_PS_NONE) for lowest latency
+  - Or WiFi.setSleep(WIFI_PS_MIN_MODEM) for power saving
+  - Implement deep sleep between transmissions if battery powered
+
+STM32 Optimization:
+  - Reduce sensor polling rate if CPU usage is high
+  - Use DMA for UART transmission
+  - Implement sensor error handling and retries
+
+Network Optimization:
+  - Use MQTT QoS 0 for real-time data (fastest)
+  - Use MQTT QoS 1 for important data (acknowledged)
+  - Enable MQTT keep-alive (default 60s is good)
+  - Compress JSON if bandwidth is limited
+
+Database Optimization:
+  - Create indexes on timestamp and sensorId fields
+  - Implement data aggregation for historical views
+  - Set up automatic data archival for old records
+  - Use capped collections for recent data
+
+================================================================================
+                        SECURITY CONSIDERATIONS
+================================================================================
+
+Network Security:
+  ☑ Use WPA2/WPA3 for WiFi
+  ☑ Change default MQTT broker port if exposed to internet
+  ☑ Implement MQTT authentication (username/password)
+  ☑ Use TLS/SSL for MQTT in production (port 8883)
+  ☑ Set up firewall rules to restrict access
+
+Application Security:
+  ☑ Don't hardcode WiFi credentials in production
+  ☑ Use environment variables for sensitive data
+  ☑ Implement rate limiting on backend API
+  ☑ Validate and sanitize all input data
+  ☑ Use HTTPS for web dashboard
+
+Data Security:
+  ☑ Encrypt MongoDB connection string
+  ☑ Enable MongoDB authentication
+  ☑ Regular database backups
+  ☑ Implement user authentication for dashboard
+  ☑ Log all access attempts
+
+================================================================================
+                        MAINTENANCE & MONITORING
+================================================================================
+
+Regular Checks:
+  □ Monitor ESP32 RSSI (signal strength)
+  □ Check MQTT packet success rate
+  □ Monitor database size and growth
+  □ Review error logs weekly
+  □ Update firmware periodically
+  □ Test sensor calibration monthly
+
+Logging:
+  - ESP32: Serial output (can add SD card logging)
+  - Backend: Winston logger with daily rotation
+  - Database: Enable MongoDB audit logging
+  - Frontend: Browser console errors
+
+Alerts:
+  - Set up alerts for device disconnections
+  - Monitor data gaps (no data for >5 minutes)
+  - Alert on abnormal sensor readings
+  - CPU/memory usage thresholds on backend
+
+================================================================================
+                        ADDITIONAL RESOURCES
+================================================================================
+
+Documentation:
+  - STM32 HAL Library: https://www.st.com/en/embedded-software/stm32cube.html
+  - ESP32 Arduino Core: https://docs.espressif.com/projects/arduino-esp32/
+  - PubSubClient: https://pubsubclient.knolleary.net/
+  - ArduinoJson: https://arduinojson.org/
+  - MQTT Protocol: https://mqtt.org/
+
+Tools:
+  - MQTT Explorer: http://mqtt-explorer.com/
+  - MongoDB Compass: https://www.mongodb.com/products/compass
+  - Postman: For testing REST APIs
+  - Wireshark: For network packet analysis
+  - Logic Analyzer: For debugging UART/I2C/SPI
+
+Community:
+  - ESP32 Forum: https://esp32.com/
+  - STM32 Community: https://community.st.com/
+  - Arduino Forum: https://forum.arduino.cc/
+  - Stack Overflow: Tag [esp32], [stm32], [mqtt]
+
+================================================================================
+                        PROJECT CHECKLIST
+================================================================================
+
+Hardware Setup:
+  □ All sensors connected to STM32
+  □ STM32 to ESP32 UART wired correctly
+  □ Power supply adequate for all components
+  □ Common ground established between all devices
+
+Software Setup:
+  □ STM32 code compiled and uploaded
+  □ ESP32 code configured and uploaded
+  □ Backend server running and MQTT broker active
+  □ MongoDB connected and accessible
+  □ Frontend dashboard built and accessible
+
+Testing:
+  □ STM32 sensors reading correctly
+  □ UART communication verified
+  □ WiFi connection stable
+  □ MQTT publishing successful
+  □ Data appearing in database
+  □ Dashboard showing real-time updates
+
+Documentation:
+  □ Pin connections documented
+  □ Configuration settings noted
+  □ Known issues logged
+  □ Calibration values recorded
+
+================================================================================
+                        SUPPORT CONTACT
+================================================================================
+
+For issues with this setup guide or system implementation:
+  - Check troubleshooting section first
+  - Review backend and ESP32 console logs
+  - Test each component individually
+  - Document error messages and steps to reproduce
+
+Version: 1.0
+Last Updated: December 2024
+Author: ESP32-STM32 IoT Project Team
+
+================================================================================
+                        END OF SETUP GUIDE
+================================================================================
