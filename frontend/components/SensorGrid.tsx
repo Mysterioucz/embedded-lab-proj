@@ -33,7 +33,7 @@ export default function SensorGrid({ topics, connected }: SensorGridProps) {
                             motion={data.motion}
                             timestamp={data.timestamp}
                             sensorId={data.sensorId}
-                            isLive={connected && isDataLive(data.timestamp)}
+                            isLive={isDataLive(data.timestamp)}
                         />
                     ))}
             </div>

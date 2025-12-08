@@ -231,12 +231,12 @@ void DS1302_Init() {
   DS1302_Write(0x8E, 0x00); // Disable write protection
   // Optional: Set time once if needed (Sec, Min, Hour, Date, Month, Day, Year)
    DS1302_Write(0x80, 0x00); // 00 Seconds
-   DS1302_Write(0x82, 0x40); // 40 Minutes (example: set to current time)
-   DS1302_Write(0x84, 0x11); // 11 Hours (24h format) 
-   DS1302_Write(0x86, 0x08); // 8th Day
-   DS1302_Write(0x88, 0x12); // December (month 12)
-   DS1302_Write(0x8A, 0x01); // Sunday (day of week, 1-7)
-   DS1302_Write(0x8C, 0x25); // Year 24 (2024)
+   DS1302_Write(0x82, 0x35); // 40 Minutes (example: set to current time)
+   DS1302_Write(0x84, 0x01); // 11 Hours (24h format)
+   DS1302_Write(0x86, 0x09); // th Day
+   DS1302_Write(0x88, 0x12); // (month 12)
+   DS1302_Write(0x8A, 0x02); // (day of week, 1-7)
+   DS1302_Write(0x8C, 0x25); // Year 25 (2025)
    
    DS1302_Write(0x8E, 0x80); // Enable write protect
 }

@@ -4,43 +4,383 @@ A real-time IoT sensor monitoring system built with **Next.js** (Frontend), **No
 
 ## Architecture
 
+### System Overview
+
 ```
-┌─────────────────┐
-│  IoT Sensors    │
-│  (ESP32/Arduino)│
-└────────┬────────┘
-         │ MQTT Protocol
-         ▼
-┌─────────────────┐     ┌──────────────┐
-│  MQTT Broker    │────▶│   MongoDB    │
-│  (Aedes)        │     │   Database   │
-└────────┬────────┘     └──────────────┘
-         │ Socket.io
-         ▼
-┌─────────────────┐
-│  Next.js        │
-│  Dashboard      │
-└─────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         IoT Sensor System                             │
+│                                                                        │
+│  ┌────────────────┐                                                   │
+│  │  STM32 F411RE  │  UART (115200 baud)                              │
+│  │  Nucleo Board  │  ──────────────────┐                             │
+│  │                │                     │                             │
+│  │  - DHT11       │                     ▼                             │
+│  │  - LDR + ADC   │              ┌─────────────┐                     │
+│  │  - DS1302 RTC  │              │   ESP32-S3  │                     │
+│  │  - USART1/2    │              │   WiFi      │                     │
+│  └────────────────┘              │   Bridge    │                     │
+│         │                         └──────┬──────┘                     │
+│         │ USB (Debug)                    │                            │
+│         ▼                                │ MQTT/WiFi                  │
+│  ┌────────────┐                          │ (mqtt://server:1883)      │
+│  │   PC/USB   │                          │                            │
+│  │   Debug    │                          ▼                            │
+│  └────────────┘              ┌────────────────────┐                  │
+│                               │  Backend Server    │                  │
+│                               │  (Node.js/Express) │                  │
+│                               │                    │                  │
+│                               │  - MQTT Broker     │◄──┐              │
+│                               │    (Aedes/Railway) │   │              │
+│                               │  - Socket.io       │   │              │
+│                               │  - REST API        │   │              │
+│                               └────────┬───────────┘   │              │
+│                                        │               │              │
+│                                        │ Saves         │ Queries      │
+│                                        ▼               │              │
+│                               ┌────────────────────┐   │              │
+│                               │     MongoDB        │   │              │
+│                               │     Database       │───┘              │
+│                               └────────────────────┘                  │
+│                                        │                               │
+│                                        │ Real-time via Socket.io      │
+│                                        ▼                               │
+│                               ┌────────────────────┐                  │
+│                               │  Frontend          │                  │
+│                               │  (Next.js)         │                  │
+│                               │                    │                  │
+│                               │  - Dashboard       │                  │
+│                               │  - Live Charts     │                  │
+│                               │  - WebSocket       │                  │
+│                               └────────────────────┘                  │
+│                                                                        │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Components
 
-1. **Backend (Node.js)**
-   - Express.js server for REST API
-   - Aedes MQTT broker (embedded)
-   - Socket.io for real-time updates
-   - MongoDB for data persistence
+1. **STM32 F411RE Nucleo Board (MCU)**
+   - **Microcontroller**: STM32F411RET6 (ARM Cortex-M4, 84MHz)
+   - **Sensors**:
+     - DHT11: Temperature & Humidity sensor
+     - LDR (Light Dependent Resistor): Light intensity via ADC
+     - DS1302: Real-time clock module
+   - **Communication**:
+     - USART1 (PA9/PA10): Serial to ESP32 @ 115200 baud
+     - USART2 (PA2/PA3): USB Debug console @ 115200 baud
+   - **Functions**: Read sensors, format JSON, transmit data every 2 seconds
 
-2. **Frontend (Next.js)**
-   - Real-time dashboard with live charts
-   - Socket.io client for instant updates
-   - Responsive UI with Tailwind CSS
-   - Recharts for data visualization
+2. **ESP32-S3 WiFi Bridge**
+   - **Role**: UART-to-MQTT bridge
+   - **WiFi**: 2.4GHz IEEE 802.11 b/g/n
+   - **Communication**:
+     - UART2 (GPIO18/17): Serial from STM32 @ 115200 baud
+     - MQTT Client: Publishes to cloud broker
+   - **Features**:
+     - Automatic WiFi reconnection
+     - MQTT connection management
+     - JSON validation and forwarding
+     - Error handling and watchdog timer
+     - Connection status LED
 
-3. **IoT Sensors**
-   - Publish data via MQTT protocol
-   - Topic pattern: `home/sensors/[sensor-name]`
-   - JSON payload format
+3. **Backend Server (Node.js)**
+   - **Framework**: Express.js REST API server
+   - **MQTT Broker**: Aedes (embedded) or external (Railway/Mosquitto)
+   - **Real-time**: Socket.io for WebSocket communication
+   - **Database**: MongoDB for data persistence
+   - **Services**:
+     - MQTT message processing
+     - WebSocket broadcasting
+     - REST API endpoints
+     - Data validation and storage
+
+4. **Frontend Dashboard (Next.js)**
+   - **Framework**: Next.js 14 with React
+   - **UI**: Tailwind CSS, responsive design
+   - **Visualization**: Recharts for time-series data
+   - **Real-time**: Socket.io client for live updates
+   - **Features**:
+     - Live sensor cards
+     - Historical data charts
+     - Connection status monitoring
+     - Multi-sensor support
+
+## PIN Mapping
+
+### STM32 F411RE Nucleo Board
+
+#### Power Pins
+- **3.3V**: Power supply for sensors (DHT11, DS1302)
+- **5V**: Available from USB (not used in this project)
+- **GND**: Common ground for all components
+
+#### DHT11 Temperature & Humidity Sensor
+| DHT11 Pin | STM32 Pin | Function | Notes |
+|-----------|-----------|----------|-------|
+| VCC | 3.3V | Power | 3.3V-5V compatible |
+| DATA | **PB5** | Data I/O | Digital bidirectional |
+| GND | GND | Ground | - |
+
+**Configuration**: GPIO with software bit-banging protocol
+
+#### LDR (Light Sensor) Circuit
+| Component | STM32 Pin | Function | Notes |
+|-----------|-----------|----------|-------|
+| LDR + Divider | **PA0** | ADC Input | ADC1_IN0 Channel |
+| Circuit | - | Voltage divider | LDR + 10kΩ resistor |
+
+**Configuration**: 
+- ADC1, Channel 0
+- 12-bit resolution (0-4095)
+- Sampling time: 3 cycles
+- Voltage range: 0-3.3V
+- **Lux Calculation**: `Lux = 10 × (R/50000)^(-1/0.7)` where R = 10kΩ × (3.3V - V) / V
+
+#### DS1302 Real-Time Clock Module
+| DS1302 Pin | STM32 Pin | Function | Notes |
+|-----------|-----------|----------|-------|
+| VCC | 3.3V | Power | - |
+| GND | GND | Ground | - |
+| CLK (SCLK) | **PB8** | Serial Clock | GPIO Output |
+| DAT (I/O) | **PB4** | Data I/O | GPIO bidirectional |
+| RST (CE) | **PB10** | Chip Enable | GPIO Output |
+
+**Configuration**: Software SPI (bit-banging), 3-wire interface
+
+#### USART1 - ESP32 Communication
+| Function | STM32 Pin | Connected To | Baud Rate |
+|----------|-----------|--------------|-----------|
+| TX | **PA9** | ESP32 RX (GPIO18) | 115200 |
+| RX | **PA10** | ESP32 TX (GPIO17) | 115200 |
+| GND | GND | ESP32 GND | - |
+
+**Configuration**: Asynchronous mode, 8N1 (8 data bits, no parity, 1 stop bit)
+
+#### USART2 - USB Debug Console
+| Function | STM32 Pin | Connected To | Baud Rate |
+|----------|-----------|--------------|-----------|
+| TX | **PA2** | ST-Link USB | 115200 |
+| RX | **PA3** | ST-Link USB | 115200 |
+
+**Configuration**: Connected to ST-Link virtual COM port for debugging
+
+#### Status LED
+| Component | STM32 Pin | Function | Notes |
+|-----------|-----------|----------|-------|
+| Green LED (LD2) | **PA5** | Status indicator | Built-in LED, toggles every 2s |
+
+#### Debug Pins (SWD)
+| Function | STM32 Pin | Purpose |
+|----------|-----------|---------|
+| SWDIO | **PA13** | Debug data |
+| SWCLK | **PA14** | Debug clock |
+| SWO | **PB3** | Serial wire output |
+
+### ESP32-S3 WiFi Bridge
+
+#### UART2 - STM32 Communication
+| Function | ESP32 Pin | Connected To | Baud Rate |
+|----------|-----------|--------------|-----------|
+| RX | **GPIO18** (RXD2) | STM32 TX (PA9) | 115200 |
+| TX | **GPIO17** (TXD2) | STM32 RX (PA10) | 115200 |
+| GND | GND | STM32 GND | - |
+
+**Configuration**: Serial2, 8N1, 512-byte buffer
+
+#### Status LED
+| Component | ESP32 Pin | Function | Pattern |
+|-----------|-----------|----------|---------|
+| Built-in LED | **GPIO2** | Connection status | Blink pattern indicates WiFi/MQTT status |
+
+**LED Patterns**:
+- Fast blink (200ms): WiFi connecting
+- Medium blink (500ms): WiFi connected, MQTT connecting
+- Slow blink (1000ms): Fully connected
+- Solid ON: Error state
+- OFF: Disconnected
+
+#### Power
+- **VIN/5V**: 5V power input (USB or external)
+- **3.3V**: 3.3V regulated output
+- **GND**: Ground
+
+## Data Flow
+
+### Complete Data Pipeline
+
+```
+1. STM32 Sensor Reading (Every 2 seconds)
+   ├─ DHT11: Read temperature & humidity
+   ├─ ADC: Read LDR light intensity
+   └─ DS1302: Read current timestamp
+
+2. STM32 Data Processing
+   ├─ Convert ADC value to Lux
+   ├─ Format data as JSON string
+   └─ Calculate checksum for DHT11
+
+3. STM32 Transmission
+   ├─ USART2 → PC/Debug console (monitoring)
+   └─ USART1 → ESP32 (main data path)
+
+4. ESP32 Reception (UART2)
+   ├─ Receive JSON string from STM32
+   ├─ Validate JSON format
+   └─ Buffer data (max 512 bytes)
+
+5. ESP32 Processing
+   ├─ Parse JSON with ArduinoJson
+   ├─ Validate data fields
+   ├─ Add sensor metadata
+   └─ Handle errors with watchdog
+
+6. ESP32 WiFi/MQTT Publishing
+   ├─ Ensure WiFi connection (auto-reconnect)
+   ├─ Ensure MQTT connection (retry logic)
+   ├─ Publish to topic: "home/sensors/esp32"
+   └─ Update LED status
+
+7. Backend MQTT Broker
+   ├─ Receive MQTT message on subscribed topic
+   ├─ Parse timestamp (DD/MM/YYYY HH:MM:SS format)
+   └─ Log reception
+
+8. Backend Processing
+   ├─ Validate JSON structure
+   ├─ Parse STM32 timestamp format
+   ├─ Map fields: temp→temperature, hum→humidity, lux→light
+   └─ Create SensorData document
+
+9. Backend Storage
+   ├─ Save to MongoDB with schema:
+   │  {
+   │    topic: "home/sensors/esp32",
+   │    sensorId: "nucleo-f411re-001",
+   │    temperature: 25.5,
+   │    humidity: 60.0,
+   │    light: 450.0,
+   │    timestamp: ISODate("2025-12-08T11:40:00.000Z")
+   │  }
+   └─ Confirm save to database
+
+10. Backend Broadcasting
+    ├─ Emit Socket.io event: "sensor-data"
+    ├─ Send to all connected WebSocket clients
+    └─ Include topic and full data object
+
+11. Frontend Reception
+    ├─ Socket.io client receives "sensor-data" event
+    ├─ Update React state (sensorData array)
+    └─ Trigger UI re-render
+
+12. Frontend Display
+    ├─ Group data by topic
+    ├─ Display latest values in sensor cards
+    ├─ Update time-series charts (last 50 points)
+    └─ Show connection status indicator
+```
+
+### JSON Data Format
+
+#### From STM32 to ESP32
+```json
+{
+  "temp": 25.5,
+  "hum": 60.0,
+  "lux": 450.0,
+  "time": "08/12/2024 11:40:00"
+}
+```
+
+#### From ESP32 to MQTT Broker
+```json
+{
+  "temp": 25.5,
+  "hum": 60.0,
+  "lux": 450.0,
+  "time": "08/12/2024 11:40:00"
+}
+```
+*Note: ESP32 forwards the exact JSON from STM32*
+
+#### Stored in MongoDB
+```json
+{
+  "_id": ObjectId("..."),
+  "topic": "home/sensors/esp32",
+  "sensorId": "nucleo-f411re-001",
+  "temperature": 25.5,
+  "humidity": 60.0,
+  "light": 450.0,
+  "timestamp": ISODate("2024-12-08T11:40:00.000Z"),
+  "createdAt": ISODate("2024-12-08T11:40:01.234Z")
+}
+```
+
+#### Broadcast to Frontend
+```json
+{
+  "topic": "home/sensors/esp32",
+  "data": {
+    "_id": "...",
+    "topic": "home/sensors/esp32",
+    "sensorId": "nucleo-f411re-001",
+    "temperature": 25.5,
+    "humidity": 60.0,
+    "light": 450.0,
+    "timestamp": "2024-12-08T11:40:00.000Z"
+  }
+}
+```
+
+### Communication Protocols
+
+1. **UART (STM32 ↔ ESP32)**
+   - Protocol: RS-232 Serial
+   - Baud Rate: 115200 bps
+   - Format: 8 data bits, No parity, 1 stop bit (8N1)
+   - Flow Control: None
+   - Data Format: JSON strings terminated with `\r\n`
+
+2. **WiFi (ESP32 ↔ Backend)**
+   - Standard: IEEE 802.11 b/g/n (2.4GHz)
+   - Protocol: TCP/IP
+   - Connection: DHCP client
+
+3. **MQTT (ESP32 ↔ Broker)**
+   - Protocol Version: MQTT v3.1.1
+   - Transport: TCP
+   - Port: 1883 (default) or custom (Railway: 17647)
+   - QoS: 0 (At most once delivery)
+   - Authentication: Username/Password (configurable)
+   - Keep-alive: 60 seconds
+
+4. **WebSocket (Backend ↔ Frontend)**
+   - Protocol: Socket.io over WebSocket/HTTP
+   - Port: 4000 (default)
+   - Transport: WebSocket with fallback to polling
+   - Events: 
+     - `sensor-data`: Real-time sensor updates
+     - `connect`: Client connection
+     - `disconnect`: Client disconnection
+
+5. **HTTP REST API (Frontend ↔ Backend)**
+   - Protocol: HTTP/1.1
+   - Port: 4000
+   - Format: JSON
+   - Endpoints:
+     - `GET /api/sensors`: Get all sensor data
+     - `GET /api/sensors/latest`: Get latest readings
+     - `GET /api/sensors/topic/:topic`: Get data by topic
+     - `GET /api/sensors/stats`: Get statistics
+
+### Timing & Performance
+
+- **STM32 Sensor Reading**: 2 seconds interval
+- **UART Transmission**: ~50ms per JSON packet
+- **MQTT Publish**: ~100-300ms (network dependent)
+- **Database Write**: ~10-50ms
+- **Frontend Update**: Real-time (<100ms from broadcast)
+- **End-to-End Latency**: ~500ms-1s (sensor to dashboard)
 
 ## Prerequisites
 

@@ -25,8 +25,8 @@
 
 // ==================== CONFIGURATION ====================
 // WiFi Configuration
-const char* ssid = "aisfibre_2.4G_Nui";
-const char* password = "Sajja_nui";
+const char* ssid = "Chatrin";
+const char* password = "Chromeisreals";
 
 // MQTT Configuration
 const char* mqtt_server = "ballast.proxy.rlwy.net";    // Railway Mosquitto TCP proxy domain
@@ -46,7 +46,6 @@ const char* sensor_id = "nucleo-f411re-001";
 #define WIFI_TIMEOUT_MS 20000         // 20 seconds WiFi connection timeout
 #define MQTT_RETRY_INTERVAL 5000      // 5 seconds between MQTT reconnection attempts
 #define WIFI_CHECK_INTERVAL 30000     // 30 seconds between WiFi health checks
-#define WATCHDOG_TIMEOUT 60           // 60 seconds watchdog timeout
 #define MAX_RECONNECT_ATTEMPTS 5      // Max reconnection attempts before restart
 #define DATA_TIMEOUT 120000            // 2 minutes no data timeout (milliseconds)
 #define MQTT_BUFFER_SIZE 512           // MQTT packet buffer size
@@ -68,7 +67,6 @@ enum ErrorCode {
   ERR_MEMORY_LOW = 7,
   ERR_SYSTEM_CRITICAL = 99,
   ERR_DATA_TIMEOUT = 10,
-  ERR_WATCHDOG_FEED = 11
 };
 
 // ==================== OBJECTS ====================
@@ -104,32 +102,9 @@ unsigned long lastLedBlink = 0;
 int ledBlinkPattern = 0;  // 0=off, 1=slow, 2=fast, 3=solid
 
 // ==================== WATCHDOG & SYSTEM MONITORING ====================
-hw_timer_t *watchdogTimer = NULL;
-
 void IRAM_ATTR resetModule() {
   ets_printf("\n⚠️ WATCHDOG TIMEOUT - System unresponsive, restarting...\n");
   esp_restart();
-}
-
-void initWatchdog() {
-  // ESP32 Arduino Core 3.x API
-  watchdogTimer = timerBegin(1000000);  // 1 MHz frequency (1 tick = 1 microsecond)
-  timerAttachInterrupt(watchdogTimer, &resetModule);
-  timerAlarm(watchdogTimer, WATCHDOG_TIMEOUT * 1000000, false, 0);  // 60 seconds, no auto-reload
-  Serial.println("🐕 Watchdog timer initialized (" + String(WATCHDOG_TIMEOUT) + "s timeout)");
-}
-
-void feedWatchdog() {
-  if (watchdogTimer != NULL) {
-    timerRestart(watchdogTimer);  // Restart timer countdown
-  } else {
-    // Watchdog not initialized properly
-    static unsigned long lastWarn = 0;
-    if (millis() - lastWarn > 30000) {  // Warn every 30s
-      Serial.println("⚠️ Watchdog timer not initialized!");
-      lastWarn = millis();
-    }
-  }
 }
 
 // LED Status Indicator
@@ -225,21 +200,15 @@ void logError(ErrorCode error, const char* message) {
 
 void handleCriticalError(ErrorCode error, const char* message) {
   logError(error, message);
-  Serial.println("🚨 CRITICAL ERROR - System will restart in 5 seconds...");
-
   // Save statistics to preferences if needed
   stats.systemRestarts++;
-
-
   emergencyRestart(message);
 }
 
 // ==================== WIFI FUNCTIONS ====================
 bool initWiFi() {
   Serial.println("\n🔧 Initializing WiFi...");
-
   ledBlinkPattern = 1;  // Slow blink while connecting
-
   // Force clean WiFi state
   WiFi.persistent(false);
   WiFi.disconnect(true);
@@ -285,7 +254,6 @@ bool connectWiFi() {
     Serial.print(".");
     dotCount++;
     if (dotCount % 40 == 0) Serial.println();
-    feedWatchdog();
   }
 
   Serial.println();
@@ -657,7 +625,6 @@ void processUARTData(String jsonString) {
   delay(50);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  feedWatchdog();
 }
 
 void printStatistics() {
@@ -719,9 +686,6 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
   ledBlinkPattern = 1;  // Start with slow blink
 
-  // Initialize watchdog
-  initWatchdog();
-
   // Check memory
   Serial.print("💾 Free Heap: ");
   Serial.print(ESP.getFreeHeap());
@@ -769,12 +733,10 @@ void setup() {
     Serial2.read();
   }
 
-  feedWatchdog();
 }
 
 // ==================== MAIN LOOP ====================
 void loop() {
-  feedWatchdog();
   updateLED();  // Update LED status indicator
 
   // Check WiFi health periodically
@@ -865,9 +827,6 @@ void loop() {
       delay(200);
     }
   }
-
-  // Small delay to prevent watchdog issues
-  delay(10);
 }
 
 /*
