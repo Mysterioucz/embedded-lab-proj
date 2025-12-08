@@ -25,12 +25,12 @@
 
 // ==================== CONFIGURATION ====================
 // WiFi Configuration
-const char* ssid = "aisfibre_2.4G_Nui";          // Replace with your WiFi SSID
-const char* password = "Sajja_nui";  // Replace with your WiFi password
+const char* ssid = "aisfibre_2.4G_Nui";
+const char* password = "Sajja_nui";
 
 // MQTT Configuration
-const char* mqtt_server = "yamanote.proxy.rlwy.net";    // Replace with your backend server IP
-const int mqtt_port = 45125;
+const char* mqtt_server = "crossover.proxy.rlwy.net";
+const int mqtt_port = 45028;
 const char* mqtt_topic = "home/sensors/esp32";
 const char* sensor_id = "nucleo-f411re-001";
 
