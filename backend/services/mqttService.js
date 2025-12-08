@@ -57,14 +57,14 @@ class MQTTService {
         // Client subscribed
         this.broker.on("subscribe", (subscriptions, client) => {
             console.log(
-                `📬 Client ${client?.id || "system"} subscribed to: ${subscriptions.map((s) => s.topic).join(", ")}`
+                `📬 Client ${client?.id || "system"} subscribed to: ${subscriptions.map((s) => s.topic).join(", ")}`,
             );
         });
 
         // Client unsubscribed
         this.broker.on("unsubscribe", (subscriptions, client) => {
             console.log(
-                `📭 Client ${client?.id || "system"} unsubscribed from: ${subscriptions.join(", ")}`
+                `📭 Client ${client?.id || "system"} unsubscribed from: ${subscriptions.join(", ")}`,
             );
         });
     }
@@ -129,7 +129,6 @@ class MQTTService {
             pressure: data.pressure,
             light: data.light,
             motion: data.motion,
-            data: data,
             timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
         });
 
@@ -172,7 +171,7 @@ class MQTTService {
                 if (error) {
                     console.error("Error publishing message:", error);
                 }
-            }
+            },
         );
     }
 

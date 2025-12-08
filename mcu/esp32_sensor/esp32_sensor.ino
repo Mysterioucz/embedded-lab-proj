@@ -3,12 +3,12 @@
 #include <ArduinoJson.h>
 
 // WiFi Configuration
-const char* ssid = "Chatrin";          // Replace with your WiFi SSID
-const char* password = "Chromeisreals";  // Replace with your WiFi password
+const char* ssid = "aisfibre_2.4G_Nui";
+const char* password = "Sajja_nui";
 
 // MQTT Configuration
-const char* mqtt_server = "172.20.10.4";    // Replace with your backend server IP
-const int mqtt_port = 1883;
+const char* mqtt_server = "crossover.proxy.rlwy.net";
+const int mqtt_port = 45028;
 const char* mqtt_topic = "home/sensors/esp32";
 const char* sensor_id = "nucleo-f411re-001";
 
@@ -778,11 +778,11 @@ void loop() {
       Serial.println("⚠️ UART data overflow detected!");
       Serial.print("   Data length: ");
       Serial.println(incomingData.length());
-      
+
       // Try to find if there's a complete JSON in the data
       int jsonStart = incomingData.indexOf('{');
       int jsonEnd = incomingData.lastIndexOf('}');
-      
+
       if (jsonStart >= 0 && jsonEnd > jsonStart) {
         // Extract JSON only
         String possibleJson = incomingData.substring(jsonStart, jsonEnd + 1);
@@ -792,18 +792,18 @@ void loop() {
         logError(ERR_UART_OVERFLOW, "UART buffer overflow - no valid JSON found");
         stats.packetsFailed++;
       }
-      
+
     } else if (incomingData.length() > 0) {
       // Trim whitespace and carriage returns
       incomingData.trim();
-      
+
       if (incomingData.length() > 0) {
         Serial.println("🔄 Processing UART line:");
         Serial.print("   Raw data (");
         Serial.print(incomingData.length());
         Serial.print(" bytes): ");
         Serial.println(incomingData);
-        
+
         // Process the data
         processUARTData(incomingData);
       }
